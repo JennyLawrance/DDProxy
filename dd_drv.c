@@ -59,11 +59,11 @@ Environment:
 
 BOOLEAN configInspectUdp = TRUE;
 
-UINT16   configInspectDestPort = 5001;
+UINT16   configInspectDestPort = 9091;
 UINT8*   configInspectDestAddrV4 = NULL;
 UINT8*   configInspectDestAddrV6 = NULL;
 
-UINT16   configNewDestPort = 5001;
+UINT16   configNewDestPort = 9091;
 UINT8*   configNewDestAddrV4 = NULL;
 UINT8*   configNewDestAddrV6 = NULL;
 
@@ -315,6 +315,12 @@ DDProxyAddFilter(
          FWPM_CONDITION_IP_REMOTE_ADDRESS;
       filterConditions[conditionIndex].matchType = FWP_MATCH_EQUAL;
 
+      DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "[DDProxy] remoteAddr != null %08x\n", *(UINT32*)remoteAddr);
+
+      //filterConditions[conditionIndex].fieldKey = 
+      //   FWPM_CONDITION_IP_LOCAL_ADDRESS;
+      //filterConditions[conditionIndex].matchType = FWP_MATCH_EQUAL;
+
       if (IsEqualGUID(layerKey, &FWPM_LAYER_DATAGRAM_DATA_V4) ||
           IsEqualGUID(layerKey, &FWPM_LAYER_ALE_FLOW_ESTABLISHED_V4))
       {
@@ -338,8 +344,12 @@ DDProxyAddFilter(
    filterConditions[conditionIndex].conditionValue.type = FWP_UINT32;
    filterConditions[conditionIndex].conditionValue.uint32 = direction;
 
-   conditionIndex++;
+   UNREFERENCED_PARAMETER(direction);
 
+   conditionIndex++;
+   //configInspectUdp = 0;
+   //configInspectUdp = 0;
+   
    if (configInspectUdp)
    {
       filterConditions[conditionIndex].fieldKey = FWPM_CONDITION_IP_REMOTE_PORT;
@@ -644,16 +654,16 @@ DDProxyRegisterCallouts(
       goto Exit;
    }
 
-   //status = DDProxyRegisterFlowEstablishedCallouts(
-   //            &FWPM_LAYER_ALE_FLOW_ESTABLISHED_V4,
-   //            &DD_PROXY_FLOW_ESTABLISHED_CALLOUT_V4,
-   //            deviceObject,
-   //            &gFlowEstablishedCalloutIdV4
-   //            );
-   //if (!NT_SUCCESS(status))
-   //{
-   //   goto Exit;
-   //}
+   status = DDProxyRegisterFlowEstablishedCallouts(
+               &FWPM_LAYER_ALE_FLOW_ESTABLISHED_V4,
+               &DD_PROXY_FLOW_ESTABLISHED_CALLOUT_V4,
+               deviceObject,
+               &gFlowEstablishedCalloutIdV4
+               );
+   if (!NT_SUCCESS(status))
+   {
+      goto Exit;
+   }
 
   /* status = DDProxyRegisterFlowEstablishedCallouts(
                &FWPM_LAYER_ALE_FLOW_ESTABLISHED_V6,
@@ -929,7 +939,7 @@ DriverEntry(
    WDFKEY configKey;
    HANDLE threadHandle;
 
-   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL,"[DDProxy] DriverEntry\n");
+   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL,"[DDProxy] DriverEntry, %s\n", registryPath->Buffer);
 
    // Request NX Non-Paged Pool when available
    ExInitializeDriverRuntime(DrvRtPoolNxOptIn);

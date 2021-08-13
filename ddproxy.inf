@@ -50,8 +50,8 @@
     AddReg        = DDProxy.AddRegistry
 
 [DDProxy.AddRegistry]
-    HKR,"Parameters","DestinationAddressToIntercept",0x00000000,"10.0.0.1" ; FLG_ADDREG_TYPE_SZ
-    HKR,"Parameters","NewDestinationAddress",0x00000000,"10.0.0.2"         ; FLG_ADDREG_TYPE_SZ
+    HKR,"Parameters","DestinationAddressToIntercept",0x00000000,"10.224.82.21" ; FLG_ADDREG_TYPE_SZ
+    HKR,"Parameters","NewDestinationAddress",0x00000000,"10.137.176.108"         ; FLG_ADDREG_TYPE_SZ
 
 [DDProxy.DelRegistry]
     HKR,"Parameters",,,
