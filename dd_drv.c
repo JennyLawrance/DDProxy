@@ -311,15 +311,15 @@ DDProxyAddFilter(
 
    if (remoteAddr != NULL)
    {
-      filterConditions[conditionIndex].fieldKey = 
+      /*filterConditions[conditionIndex].fieldKey = 
          FWPM_CONDITION_IP_REMOTE_ADDRESS;
-      filterConditions[conditionIndex].matchType = FWP_MATCH_EQUAL;
+      filterConditions[conditionIndex].matchType = FWP_MATCH_EQUAL;*/
 
       DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "[DDProxy] remoteAddr != null %08x\n", *(UINT32*)remoteAddr);
 
-      //filterConditions[conditionIndex].fieldKey = 
-      //   FWPM_CONDITION_IP_LOCAL_ADDRESS;
-      //filterConditions[conditionIndex].matchType = FWP_MATCH_EQUAL;
+      filterConditions[conditionIndex].fieldKey = 
+         FWPM_CONDITION_IP_LOCAL_ADDRESS;
+      filterConditions[conditionIndex].matchType = FWP_MATCH_EQUAL;
 
       if (IsEqualGUID(layerKey, &FWPM_LAYER_DATAGRAM_DATA_V4) ||
           IsEqualGUID(layerKey, &FWPM_LAYER_ALE_FLOW_ESTABLISHED_V4))

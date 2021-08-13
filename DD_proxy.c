@@ -98,6 +98,8 @@ DDProxyFlowEstablishedClassify(
 
    DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "[DDProxy] DDProxyFlowEstablishedClassify\n");
 
+   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "[DDProxy] DDProxyFlowEstablishedClassify: %d\n", inMetaValues->headerIncludeHeaderLength);
+
    UNREFERENCED_PARAMETER(layerData);
 #if(NTDDI_VERSION >= NTDDI_WIN7)
    UNREFERENCED_PARAMETER(classifyContext);
@@ -153,6 +155,12 @@ DDProxyFlowEstablishedClassify(
       flowContextLocal->protocol =
          inFixedValues->incomingValue\
          [FWPS_FIELD_ALE_FLOW_ESTABLISHED_V4_IP_PROTOCOL].value.uint8;
+
+      flowContextLocal->ipv4RemoteAddr =
+          RtlUlongByteSwap(
+              inFixedValues->incomingValue\
+              [FWPS_FIELD_ALE_FLOW_ESTABLISHED_V4_IP_REMOTE_ADDRESS].value.uint32
+          );
    }
    else
    {
@@ -162,6 +170,13 @@ DDProxyFlowEstablishedClassify(
          [FWPS_FIELD_ALE_FLOW_ESTABLISHED_V6_IP_LOCAL_ADDRESS].value.byteArray16,
          sizeof(FWP_BYTE_ARRAY16)
          );
+
+      RtlCopyMemory(
+          (UINT8*)&flowContextLocal->remoteAddr,
+          inFixedValues->incomingValue\
+          [FWPS_FIELD_ALE_FLOW_ESTABLISHED_V6_IP_REMOTE_ADDRESS].value.byteArray16,
+          sizeof(FWP_BYTE_ARRAY16)
+      );
       flowContextLocal->protocol = 
          inFixedValues->incomingValue\
          [FWPS_FIELD_ALE_FLOW_ESTABLISHED_V6_IP_PROTOCOL].value.uint8;
@@ -316,6 +331,7 @@ DDProxyClassify(
       goto Exit;
    }
 
+   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "[DDProxy] DDProxyClassify: %d\n", inMetaValues->headerIncludeHeaderLength); 
    //
    // We don't re-inspect packets that we've inspected earlier.
    //
@@ -382,6 +398,7 @@ DDProxyClassify(
                                          FWPS_METADATA_FIELD_COMPARTMENT_ID));
    packet->compartmentId = inMetaValues->compartmentId;
 
+
    if (packet->direction == FWP_DIRECTION_OUTBOUND)
    {
       DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL,"[DDProxy] Detected outbound packet\n");
@@ -438,6 +455,19 @@ DDProxyClassify(
 
          packet->controlDataLength =  inMetaValues->controlDataLength;
       }
+
+      //NT_ASSERT(FWPS_IS_METADATA_FIELD_PRESENT(
+      //    inMetaValues,
+      //    FWPS_METADATA_FIELD_IP_HEADER_SIZE));
+      NT_ASSERT(FWPS_IS_METADATA_FIELD_PRESENT(
+          inMetaValues,
+          FWPS_METADATA_FIELD_TRANSPORT_HEADER_SIZE));
+      packet->ipHeaderSize = inMetaValues->ipHeaderSize;
+      packet->transportHeaderSize = inMetaValues->transportHeaderSize;
+      packet->endpointHandle = inMetaValues->transportEndpointHandle;
+
+      packet->nblOffset =
+          NET_BUFFER_DATA_OFFSET(NET_BUFFER_LIST_FIRST_NB(packet->netBufferList));
    }
    else
    {
@@ -637,8 +667,13 @@ DDProxyCloneModifyReinjectOutbound(
    NTSTATUS status = STATUS_SUCCESS;
 
    NET_BUFFER_LIST* clonedNetBufferList = NULL;
-   UDP_HEADER* udpHeader;
+
+   NET_BUFFER* netBuffer;
+   ULONG nblOffset;
+   NDIS_STATUS ndisStatus;
    FWPS_TRANSPORT_SEND_PARAMS sendArgs = {0};
+/* section old code
+   UDP_HEADER* udpHeader;
 
    status = FwpsAllocateCloneNetBufferList(
                packet->netBufferList,
@@ -700,9 +735,10 @@ DDProxyCloneModifyReinjectOutbound(
    // we set the remoteAddress to the same address that was initially 
    // classified.
    //
-   sendArgs.remoteAddress = 
-      (packet->belongingFlow->toRemoteAddr ? packet->belongingFlow->toRemoteAddr
-                                           : (UINT8*)&packet->remoteAddr);
+   //sendArgs.remoteAddress = 
+   //   (packet->belongingFlow->toRemoteAddr ? packet->belongingFlow->toRemoteAddr
+   //                                        : (UINT8*)&packet->remoteAddr);
+   sendArgs.remoteAddress = (UINT8*)&packet->remoteAddr;
    sendArgs.remoteScopeId = packet->remoteScopeId;
    sendArgs.controlData = packet->controlData;
    sendArgs.controlDataLength = packet->controlDataLength;
@@ -710,6 +746,97 @@ DDProxyCloneModifyReinjectOutbound(
    //
    // Send-inject the modified net buffer list to the new destination address.
    //
+   end section old code */
+
+   /*begin section new code*/
+   netBuffer = NET_BUFFER_LIST_FIRST_NB(packet->netBufferList);
+
+   nblOffset = NET_BUFFER_DATA_OFFSET(netBuffer);
+
+   
+    //The TCP/IP stack could have retreated the net buffer list by the 
+    //transportHeaderSize amount; detect the condition here to avoid
+    //retreating twice.
+   
+   if (nblOffset != packet->nblOffset)
+   {
+       NT_ASSERT(packet->nblOffset - nblOffset == packet->transportHeaderSize);
+       packet->transportHeaderSize = 0;
+   }
+
+   //
+   // Adjust the net buffer list offset to the start of the IP header.
+   //
+   ndisStatus = NdisRetreatNetBufferDataStart(
+       netBuffer,
+       packet->ipHeaderSize, // + packet->transportHeaderSize,
+       0,
+       NULL
+   );
+   _Analysis_assume_(ndisStatus == NDIS_STATUS_SUCCESS);
+
+
+   //
+   // Note that the clone will inherit the original net buffer list's offset.
+   //
+
+   status = FwpsAllocateCloneNetBufferList(
+       packet->netBufferList,
+       NULL,
+       NULL,
+       0,
+       &clonedNetBufferList
+   );
+
+   //
+   // Undo the adjustment on the original net buffer list.
+   //
+
+   NdisAdvanceNetBufferDataStart(
+       netBuffer,
+       packet->ipHeaderSize, //+ packet->transportHeaderSize,
+       FALSE,
+       NULL
+   );
+
+   if (!NT_SUCCESS(status))
+   {
+       goto Exit;
+   }
+
+   if (packet->belongingFlow->toRemoteAddr != NULL)
+   {
+       status = FwpsConstructIpHeaderForTransportPacket(
+           clonedNetBufferList,
+           packet->ipHeaderSize,
+           packet->belongingFlow->addressFamily,
+           packet->belongingFlow->toRemoteAddr, // new source address.
+           (UINT8*)&packet->belongingFlow->remoteAddr, // existing remote address.
+           // This is our new source address --
+           // or the destination address of the
+           // original outbound traffic.
+           packet->belongingFlow->protocol,
+           packet->endpointHandle,
+           NULL,
+           0,
+           0,
+           NULL,
+           0,
+           0
+       );
+
+       if (!NT_SUCCESS(status))
+       {
+           DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "[DDProxy] FwpsConstructIpHeaderForTransportPacket failed with %08x\n", 
+               status);
+           goto Exit;
+       }
+   }
+
+   sendArgs.remoteAddress = (UINT8*)&packet->belongingFlow->remoteAddr;
+   sendArgs.remoteScopeId = packet->remoteScopeId;
+   sendArgs.controlData = packet->controlData;
+   sendArgs.controlDataLength = packet->controlDataLength;
 
    status = FwpsInjectTransportSendAsync(
                gInjectionHandle,
@@ -762,7 +889,8 @@ DDProxyCloneModifyReinjectInbound(
    ULONG nblOffset;
    NDIS_STATUS ndisStatus;
 
-   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL,"[DDProxy] trying to re-inject inbound packet\n");
+   DbgPrintEx(DPFLTR_IHVNETWORK_ID, DPFLTR_INFO_LEVEL, "[DDProxy] trying to re-inject inbound packet\n");
+
    //
    // For inbound net buffer list, we can assume it contains only one 
    // net buffer.

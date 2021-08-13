@@ -11,7 +11,7 @@
     ClassGuid   = {57465043-616C-6C6F-7574-5F636C617373}
     Provider    = %ProviderString%
     CatalogFile = DDProxy.cat
-    DriverVer   = 11/24/2014,14.24.55.836
+    DriverVer = 08/12/2021,18.38.47.632
 
 [SourceDisksNames]
    1 = %DDProxyDisk%,,,""
@@ -50,8 +50,8 @@
     AddReg        = DDProxy.AddRegistry
 
 [DDProxy.AddRegistry]
-    HKR,"Parameters","DestinationAddressToIntercept",0x00000000,"10.137.177.119" ; FLG_ADDREG_TYPE_SZ
-    HKR,"Parameters","NewDestinationAddress",0x00000000,"169.254.65.62"         ; FLG_ADDREG_TYPE_SZ
+    HKR,"Parameters","DestinationAddressToIntercept",0x00000000,"10.0.0.1" ; FLG_ADDREG_TYPE_SZ
+    HKR,"Parameters","NewDestinationAddress",0x00000000,"10.0.0.2"         ; FLG_ADDREG_TYPE_SZ
 
 [DDProxy.DelRegistry]
     HKR,"Parameters",,,
